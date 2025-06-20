@@ -1,0 +1,13 @@
+version: "3.7"
+services:
+  homeassistant:
+    container_name: homeassistant
+    image: ghcr.io/home-assistant/home-assistant:stable
+    volumes:
+      - ${CONFIG_DIR}:/config
+      - ${LOCAL_TIME}:/etc/localtime:ro
+    environment:
+      - TZ=${TZ}
+    restart: unless-stopped
+    network_mode: host
+    privileged: true # Needed for some integrations (like USB devices)
