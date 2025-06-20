@@ -12,6 +12,7 @@ portainer_data/
 
 # Ignore local configuration files
 config/
+work/
 
 # VS Code
 .vscode/
