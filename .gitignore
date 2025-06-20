@@ -22,6 +22,7 @@ Thumbs.db
 
 # Git
 .git/
+gitpull.sh
 
 # Ignore backups or temp files
 *.bak
