@@ -1,0 +1,23 @@
+version: "3.8"
+services:
+  pihole:
+    image: pihole/pihole:latest
+    container_name: pihole
+    hostname: pihole
+    domainname: lan
+    restart: unless-stopped
+    env_file:
+      - pihole.env
+    volumes:
+      - ./etc-pihole:/etc/pihole
+      - ./etc-dnsmasq.d:/etc/dnsmasq.d
+    dns:
+      - 127.0.0.1
+      - ${PIHOLE_DNS_1}
+    ports:
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "80:80"
+      - "443:443"
+    cap_add:
+      - NET_ADMIN
