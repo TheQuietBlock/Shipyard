@@ -3,7 +3,7 @@ services:
   pihole:
     image: pihole/pihole:latest
     container_name: pihole
-    hostname: ${PIHOLE_HOSTNAME}
+    hostname: ${hostname}
     domainname: ${domainname}
     restart: unless-stopped
     volumes:
