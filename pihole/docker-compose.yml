@@ -3,11 +3,9 @@ services:
   pihole:
     image: pihole/pihole:latest
     container_name: pihole
-    hostname: pihole
-    domainname: lan
+    hostname: ${PIHOLE_HOSTNAME}
+    domainname: ${domainname}
     restart: unless-stopped
-    env_file:
-      - pihole.env
     volumes:
       - ./etc-pihole:/etc/pihole
       - ./etc-dnsmasq.d:/etc/dnsmasq.d
