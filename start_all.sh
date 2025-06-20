@@ -11,6 +11,15 @@ else
     exit 1
 fi
 
+# Load environment variables from .env if present
+ENV_FILE="$(dirname "$0")/.env"
+if [ -f "$ENV_FILE" ]; then
+    set -o allexport
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +o allexport
+fi
+
 # Find all docker-compose files under this directory
 mapfile -t COMPOSE_FILES < <(find "$(dirname "$0")" \
     -path "*/.git" -prune -o \
