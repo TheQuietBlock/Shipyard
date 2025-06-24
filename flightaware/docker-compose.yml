@@ -1,0 +1,15 @@
+version: "3.8"
+services:
+  piaware:
+    image: ghcr.io/sdr-enthusiasts/docker-flightaware:latest
+    container_name: piaware
+    restart: unless-stopped
+    environment:
+      - TZ=${FEEDER_TZ}
+      - BEASTHOST=ultrafeeder
+      - FEEDER_ID=${FLIGHTAWARE_FEEDER_ID}
+      - LAT=${FEEDER_LAT}
+      - LON=${FEEDER_LONG}
+      - ALT=${FEEDER_ALT_M}
+    tmpfs:
+      - /var/log
