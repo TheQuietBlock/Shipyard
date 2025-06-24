@@ -78,7 +78,7 @@ services:
       - /var/log
 
  piaware:
-    image: ghcr.io/sdr-enthusiasts/docker-flightaware:latest
+    image: ghcr.io/sdr-enthusiasts/docker-piaware:latest
     container_name: piaware
     restart: unless-stopped
     environment:
