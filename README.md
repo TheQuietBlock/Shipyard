@@ -26,6 +26,7 @@ DNS ad blocker and private DNS server that provides network-wide ad and tracker 
 
 ### ✈️ Flight Tracking (`fr24feed/`)
 ADS-B flight tracking setup with multiple feeders and web interfaces.
+With help of https://github.com/sdr-enthusiasts 
 
 **Services:**
 - `ultrafeeder`: Multi-purpose ADS-B decoder and feeder with web interface
