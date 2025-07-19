@@ -1,7 +1,7 @@
 ---
 - name: Install and keep Docker up-to-date on Ubuntu (Raspberry Pi compatible)
   hosts: all
-  become: yes
+  become: true
 
   vars:
     docker_apt_repo: "deb [arch=arm64 signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu {{ ansible_distribution_release }} stable"
