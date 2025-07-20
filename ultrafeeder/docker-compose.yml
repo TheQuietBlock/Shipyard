@@ -8,6 +8,10 @@ services:
     restart: unless-stopped
     device_cgroup_rules:
       - 'c 189:* rwm'
+    deploy:
+      placement:
+        constraints:
+          - node.labels.dongle == true
     ports:
       - 8080:80               # to expose the web interface
     environment:
@@ -65,4 +69,5 @@ services:
       - /tmp:size=128M
       - /var/log:size=32M
     networks:
-      - fr24net
+      - FR24-Overlay
+    

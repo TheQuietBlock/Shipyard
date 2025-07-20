@@ -17,4 +17,4 @@ services:
     tmpfs:
       - /var/log
     networks:
-      - fr24net
+      - FR24-Overlay
