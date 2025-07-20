@@ -1,15 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Determine the available Docker Compose command
-if command -v docker-compose >/dev/null 2>&1; then
-    COMPOSE_CMD="docker-compose"
-elif command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    COMPOSE_CMD="docker compose"
-else
-    echo "Error: docker compose is not installed." >&2
-    exit 1
-fi
+# Name of the stack to deploy
+STACK_NAME=${STACK_NAME:-shipyard}
 
 # Load environment variables from .env if present
 ENV_FILE="$(dirname "$0")/.env"
@@ -18,6 +11,11 @@ if [ -f "$ENV_FILE" ]; then
     # shellcheck disable=SC1090
     source "$ENV_FILE"
     set +o allexport
+fi
+
+# Ensure overlay network for flight tracking exists
+if ! docker network inspect radar-network >/dev/null 2>&1; then
+    docker network create --driver overlay radar-network
 fi
 
 # Find all docker-compose files under this directory
@@ -30,11 +28,11 @@ if [ ${#COMPOSE_FILES[@]} -eq 0 ]; then
     exit 0
 fi
 
-compose_args=()
+deploy_args=()
 for file in "${COMPOSE_FILES[@]}"; do
-    compose_args+=( -f "$file" )
+    deploy_args+=( -c "$file" )
 done
 
-echo "Starting services using compose files:" "${COMPOSE_FILES[@]}"
-$COMPOSE_CMD "${compose_args[@]}" up -d
+echo "Deploying stack '$STACK_NAME' using compose files:" "${COMPOSE_FILES[@]}"
+docker stack deploy "${deploy_args[@]}" "$STACK_NAME"
 
