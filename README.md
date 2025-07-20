@@ -1,4 +1,4 @@
-# Docker Compose Services
+# Docker Swarm Services
 
 This repository contains Docker Compose configurations for various self-hosted services, designed to be easily deployed and managed.
 
@@ -58,7 +58,7 @@ Ansible playbooks for automated deployment and system setup.
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Docker and Docker Compose installed
+- Docker installed and Swarm mode initialized
 - For flight tracking: RTL-SDR dongle and appropriate antenna
 
 > **Tip:** Use the included Ansible playbook to automatically install Docker:
@@ -106,24 +106,22 @@ sudo mkdir -p /opt/adsb/ultrafeeder/globe_history /opt/adsb/ultrafeeder/graphs10
 
 ### Starting Services
 
-#### Start All Services
-Use the provided script to start all Docker Compose services automatically:
+#### Deploy All Services
+Use the provided script to deploy all Compose files as a Docker Swarm stack:
 ```bash
 ./start_all.sh
 ```
 
 This script will:
-- Detect available Docker Compose command (`docker-compose` or `docker compose`)
 - Load environment variables from `.env` if present
-- Find and start all `docker-compose.yml` files in subdirectories
+- Ensure the `radar-network` overlay network exists
+- Find all `docker-compose.yml` files and deploy them with `docker stack deploy`
 
-#### Start Individual Services
+#### Deploy Individual Services
+You can deploy a specific Compose file as its own stack:
 ```bash
-# Start AdGuard Home
-cd adguard && docker compose up -d
-
-# Start flight tracking services
-cd fr24feed && docker compose up -d
+# Example: deploy only the flight tracking services
+docker stack deploy -c fr24feed/docker-compose.yml fr24feed
 ```
 
 ## 🔧 Service Management
@@ -175,12 +173,8 @@ cd fr24feed && docker compose up -d
 ### Logs
 View service logs:
 ```bash
-# All services in a directory
-cd adguard && docker compose logs -f
-
-# Specific service
-docker logs adguard
-docker logs ultrafeeder
+# View logs for a service in the stack
+docker service logs shipyard_ultrafeeder
 ```
 
 ## 📚 Additional Resources
