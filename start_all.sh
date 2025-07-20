@@ -30,9 +30,11 @@ if [ ${#COMPOSE_FILES[@]} -eq 0 ]; then
     exit 0
 fi
 
+compose_args=()
 for file in "${COMPOSE_FILES[@]}"; do
-    dir="$(dirname "$file")"
-    echo "Starting services in $dir"
-    (cd "$dir" && $COMPOSE_CMD up -d)
+    compose_args+=( -f "$file" )
 done
+
+echo "Starting services using compose files:" "${COMPOSE_FILES[@]}"
+$COMPOSE_CMD "${compose_args[@]}" up -d
 
