@@ -69,5 +69,5 @@ services:
       - /tmp:size=128M
       - /var/log:size=32M
     networks:
-      - FR24-Overlay
+      - radar-network
     

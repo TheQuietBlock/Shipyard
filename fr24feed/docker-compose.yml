@@ -15,4 +15,4 @@ services:
     tmpfs:
       - /var/log
     networks:
-      - FR24-Overlay
+      - radar-network
