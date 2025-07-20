@@ -18,3 +18,7 @@ services:
       - /var/log
     networks:
       - radar-network
+
+networks:
+  radar-network:
+    external: true

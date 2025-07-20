@@ -70,4 +70,7 @@ services:
       - /var/log:size=32M
     networks:
       - radar-network
-    
+
+networks:
+  radar-network:
+    external: true
