@@ -1,0 +1,24 @@
+version: "3.8"
+services:
+
+ piaware:
+    image: ghcr.io/sdr-enthusiasts/docker-piaware:latest
+    container_name: piaware
+    depends_on:
+      - ultrafeeder
+    restart: unless-stopped
+    environment:
+      - TZ=${FEEDER_TZ}
+      - BEASTHOST=ultrafeeder
+      - FEEDER_ID=${FLIGHTAWARE_FEEDER_ID}
+      - LAT=${FEEDER_LAT}
+      - LON=${FEEDER_LONG}
+      - ALT=${FEEDER_ALT_M}m
+    tmpfs:
+      - /var/log
+    networks:
+      - radar-network
+
+networks:
+  radar-network:
+    external: true

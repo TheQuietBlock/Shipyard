@@ -1,0 +1,22 @@
+version: "3.8"
+services:
+
+ fr24:
+    image: ghcr.io/sdr-enthusiasts/docker-flightradar24:latest
+    container_name: fr24
+    depends_on:
+      - ultrafeeder
+    restart: unless-stopped
+    ports:
+      - 8754:8754
+    environment:
+      - BEASTHOST=ultrafeeder
+      - FR24KEY=${FR24_SHARING_KEY}
+    tmpfs:
+      - /var/log
+    networks:
+      - radar-network
+
+networks:
+  radar-network:
+    external: true
