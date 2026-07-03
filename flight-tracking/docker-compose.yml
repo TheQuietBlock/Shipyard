@@ -6,10 +6,8 @@ services:
     container_name: ultrafeeder
     hostname: ultrafeeder
     restart: unless-stopped
-    deploy:
-      placement:
-        constraints:
-          - node.labels.dongle == true
+    device_cgroup_rules:
+      - 'c 189:* rwm'
     ports:
       - 8080:80               # to expose the web interface
     environment:
@@ -66,9 +64,56 @@ services:
       - /run:exec,size=256M
       - /tmp:size=128M
       - /var/log:size=32M
-    networks:
-      - radar-network
 
-networks:
-  radar-network:
-    external: true
+ fr24:
+    image: ghcr.io/sdr-enthusiasts/docker-flightradar24:latest
+    container_name: fr24
+    restart: unless-stopped
+    ports:
+      - 8754:8754
+    environment:
+      - BEASTHOST=ultrafeeder
+      - FR24KEY=${FR24_SHARING_KEY}
+    tmpfs:
+      - /var/log
+
+ piaware:
+    image: ghcr.io/sdr-enthusiasts/docker-piaware:latest
+    container_name: piaware
+    restart: unless-stopped
+    environment:
+      - TZ=${FEEDER_TZ}
+      - BEASTHOST=ultrafeeder
+      - FEEDER_ID=${FLIGHTAWARE_FEEDER_ID}
+      - LAT=${FEEDER_LAT}
+      - LON=${FEEDER_LONG}
+      - ALT=${FEEDER_ALT_M}m
+    tmpfs:
+      - /var/log
+
+ portainer:
+    image: portainer/portainer-ee:latest
+    container_name: portainer
+    restart: always
+    ports:
+      - 8000:8000
+      - 9443:9443
+      - 9000:9000
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    environment:
+      - PORTAINER_LICENSE_KEY=${PORTAINER_LICENSE_KEY}
+
+ watchtower:
+    image: containrrr/watchtower
+    container_name: watchtower
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_RESTARTING=true
+    restart: unless-stopped
+
+volumes:
+  portainer_data:
