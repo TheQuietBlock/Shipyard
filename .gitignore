@@ -32,3 +32,6 @@ gitpull.sh
 *.bak
 *.tmp
 *~
+cloudflared/*.json
+web-hosting/cloudflared/
+web-hosting/.env

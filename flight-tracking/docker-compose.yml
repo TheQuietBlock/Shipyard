@@ -106,7 +106,7 @@ services:
       - PORTAINER_LICENSE_KEY=${PORTAINER_LICENSE_KEY}
 
  watchtower:
-    image: containrrr/watchtower
+    image: nickfedor/watchtower
     container_name: watchtower
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock

@@ -1,0 +1,31 @@
+version: "3.8"
+services:
+  website1_web:
+    image: nginx:latest
+    container_name: ${WEBSITE1_NAME}_web
+    restart: unless-stopped
+    volumes:
+      # Mount only the specific website files for website 1
+      - /var/www/${WEBSITE1_DOMAIN}:/usr/share/nginx/html:ro
+
+  website2_web:
+    image: nginx:latest
+    container_name: ${WEBSITE2_NAME}_web
+    restart: unless-stopped
+    volumes:
+      # Mount only the specific website files for website 2
+      - /var/www/${WEBSITE2_DOMAIN}:/usr/share/nginx/html:ro
+
+  # Cloudflare Tunnel Proxy (Locally Managed)
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run ${TUNNEL_ID}
+    volumes:
+      # Mount the configuration and credentials file we copied from webserver
+      - ./cloudflared:/etc/cloudflared:ro
+    # Connects directly to both webservers over Docker's internal network
+    depends_on:
+      - website1_web
+      - website2_web
