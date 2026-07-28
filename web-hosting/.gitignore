@@ -1,8 +1,0 @@
-# Ignore environment variables containing secrets
-.env
-
-# Ignore Cloudflare configuration which contains specific routing and credentials
-cloudflared/
-
-# Ignore placeholder HTML directory if created
-html/

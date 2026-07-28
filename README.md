@@ -1,183 +1,146 @@
-# Docker Swarm Services
+# Shipyard
 
-This repository contains Docker Compose configurations for various self-hosted services, designed to be easily deployed and managed.
+Docker Compose setup for a single Raspberry Pi 5 running an ADS-B flight tracking
+station. It feeds FlightRadar24 and FlightAware, and serves a local map and
+system graphs.
 
-## 🗂️ Services Overview
+Built on the excellent images from [sdr-enthusiasts](https://github.com/sdr-enthusiasts).
 
-### 🔄 Watchtower (`watchtower/`)
-Automated Docker container updates with scheduled cleanup and monitoring.
+> No Docker Swarm — this is a plain `docker compose` deployment on one host.
 
-**Services:**
-- `watchtower`: Automated container update service
+## 🗂️ Services
 
-**Ports:**
-- `8083`: Web interface for monitoring and manual updates
+All services live in a single stack: [flight-tracking/docker-compose.yml](flight-tracking/docker-compose.yml).
 
-**Features:**
-- Automatic container image updates
-- Scheduled cleanup of old images
-- Configurable update schedule (default: daily at 1 AM)
-- Cleanup of unused images after updates
-- 30-second timeout for updates
+| Service | Image | Purpose |
+| --- | --- | --- |
+| `ultrafeeder` | `sdr-enthusiasts/docker-adsb-ultrafeeder` | ADS-B decoder, aggregator feeder, TAR1090 map, graphs1090 |
+| `fr24` | `sdr-enthusiasts/docker-flightradar24` | FlightRadar24 feeder |
+| `piaware` | `sdr-enthusiasts/docker-piaware` | FlightAware feeder |
+| `portainer` | `portainer/portainer-ee` | Container management UI |
+| `watchtower` | `nickfedor/watchtower` | Automatic image updates + cleanup |
 
-### ✈️ Flight Tracking (`fr24feed/`)
-ADS-B flight tracking setup with multiple feeders and web interfaces.
-With help of https://github.com/sdr-enthusiasts 
+### Ports
 
-**Services:**
-- `ultrafeeder`: Multi-purpose ADS-B decoder and feeder with web interface
-- `fr24`: FlightRadar24 feeder service
-- `piaware`: FlightAware feeder service
+| Port | Service |
+| --- | --- |
+| `8080` | Ultrafeeder web interface (TAR1090 map, graphs1090) |
+| `8754` | FlightRadar24 feeder status |
+| `9000` / `9443` | Portainer UI (HTTP / HTTPS) |
+| `8000` | Portainer Edge agent tunnel |
 
-**Ports:**
-- `8080`: Ultrafeeder web interface (TAR1090 map)
-- `8754`: FlightRadar24 status interface
+`fr24` and `piaware` both pull their data from `ultrafeeder` over Beast on the
+Compose network, so only `ultrafeeder` needs the SDR.
 
-**Features:**
-- Real-time aircraft tracking and display
-- Multiple flight tracking service integration
-- Interactive web-based flight map
-- Range and altitude visualization
-- MLAT (Multilateration) support
-- Requires RTL-SDR dongle for ADS-B reception
+## 🔌 Hardware
 
-**Hardware Requirements:**
-- RTL-SDR USB dongle for ADS-B reception
-- udev rules included (`60-rtl-sdr.rules`) for proper USB device access
+- Raspberry Pi 5
+- RTL-SDR USB dongle + 1090 MHz antenna
 
-### 🤖 Ansible Automation (`ansible/`)
-Ansible playbooks for automated deployment and system setup.
+Install the udev rules so the dongle is accessible without root:
 
-**Available Playbooks:**
-- `install-docker.yml`: Automated Docker installation on Ubuntu/Raspberry Pi systems
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Docker installed and Swarm mode initialized
-- For flight tracking: RTL-SDR dongle and appropriate antenna
-
-> **Tip:** Use the included Ansible playbook to automatically install Docker:
-> ```bash
-> cd ansible && ansible-playbook -i your_inventory playbooks/install-docker.yml
-> ```
-
-### Configuration
-Create a `.env` file in the root directory with required environment variables:
-
-**Example `.env` file:**
 ```bash
-# Timezone
-TZ=America/New_York
+sudo cp flight-tracking/60-rtl-sdr.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
+```
 
-# Flight tracking location settings (required for accurate tracking)
-FEEDER_TZ=America/New_York
-FEEDER_LAT=40.7128
-FEEDER_LONG=-74.0060
+## ⚙️ Configuration
+
+Create `flight-tracking/.env` (git-ignored):
+
+```bash
+# Location / identity
+FEEDER_TZ=Europe/Amsterdam
+FEEDER_LAT=52.3676
+FEEDER_LONG=4.9041
 FEEDER_ALT_M=10
 FEEDER_NAME="My ADS-B Station"
 
-# Flight tracking service keys (obtain from respective services)
+# Feeder keys (obtain from the respective services)
 FR24_SHARING_KEY=your_fr24_sharing_key_here
 FLIGHTAWARE_FEEDER_ID=your_flightaware_feeder_id_here
 
-# Optional: HeyWhatsThat integration for range rings
+# Portainer Business Edition license
+PORTAINER_LICENSE_KEY=your_portainer_license_key_here
+
+# Optional: HeyWhatsThat range rings
 FEEDER_HEYWHATSTHAT_ID=your_heywhatsthat_id
 FEEDER_HEYWHATSTHAT_ALTS=12192,24384,36576
 ```
 
-**Important:** Create the data directories before starting services:
+Get the keys here:
+- FlightRadar24 — https://www.flightradar24.com/share-your-data
+- FlightAware — https://flightaware.com/adsb/piaware/
+
+## 🚀 Running
+
 ```bash
-# Create flight tracking data directories (optional, containers will create them)
+cd flight-tracking
+docker compose pull
+docker compose up -d
+```
+
+Ultrafeeder persists data to `/opt/adsb/ultrafeeder/` on the host. The
+containers create these directories on first run; to pre-create them:
+
+```bash
 sudo mkdir -p /opt/adsb/ultrafeeder/globe_history /opt/adsb/ultrafeeder/graphs1090
 ```
 
-### Starting Services
+Then open the map at `http://<pi-address>:8080`.
 
-#### Deploy All Services
-Use the provided script to deploy all Compose files as a Docker Swarm stack:
+## 🤖 Remote setup
+
+[setup_remote.sh](setup_remote.sh) provisions the Pi from scratch: it clones this
+repo to `~/git/Shipyard`, installs `~/update_shipyard.sh`, registers a daily
+cronjob at 03:00 that pulls and redeploys, and runs the first deployment.
+
+Run it **on the Pi**:
+
 ```bash
-./start_all.sh
+curl -fsSL https://raw.githubusercontent.com/TheQuietBlock/Shipyard/main/setup_remote.sh | bash
 ```
 
-This script will:
-- Load environment variables from `.env` if present
-- Ensure the `radar-network` overlay network exists
-- Find all `docker-compose.yml` files and deploy them with `docker stack deploy`
+The script will not overwrite an existing `flight-tracking/.env` — copy yours
+into place before or after the first run.
 
-#### Deploy Individual Services
-You can deploy a specific Compose file as its own stack:
-```bash
-# Example: deploy only the flight tracking services
-docker stack deploy -c fr24feed/docker-compose.yml fr24feed
+## 📂 Layout
 
-# Example: deploy only Watchtower for automated updates
-docker stack deploy -c watchtower/docker-compose.yml watchtower
-```
-
-## 🔧 Service Management
-
-### Watchtower
-1. **Web Interface**: Access at `http://your-host:8083` for monitoring
-2. **Automatic Updates**: Containers are checked daily at 1 AM
-3. **Cleanup**: Old images are automatically removed after updates
-4. **Manual Updates**: Trigger updates through the web interface if needed
-
-### Flight Tracking
-1. **Web Interface**: Access the flight map at `http://your-host:8080`
-2. **Service Registration**: 
-   - Register with FlightRadar24 and FlightAware to obtain sharing keys
-   - Configure your location coordinates for accurate tracking
-3. **Hardware Setup**: 
-   - Connect RTL-SDR dongle
-   - Install udev rules: `sudo cp fr24feed/60-rtl-sdr.rules /etc/udev/rules.d/`
-   - Reload udev rules: `sudo udevadm control --reload-rules`
-
-## 📂 Directory Structure
 ```
 .
-├── watchtower/
-│   └── docker-compose.yml      # Automated container updates
-├── fr24feed/
-│   ├── docker-compose.yml      # Flight tracking services
-│   └── 60-rtl-sdr.rules       # RTL-SDR udev rules
-├── ultrafeeder/
-│   └── docker-compose.yml      # Ultrafeeder service
-├── piware/
-│   └── docker-compose.yml     # PiAware service
-├── ansible/
-│   └── playbooks/             # Ansible automation (optional)
-├── start_all.sh               # Automated startup script
-├── .env                       # Environment configuration (create this)
-└── README.md                  # This file
+├── flight-tracking/
+│   ├── docker-compose.yml     # The whole stack
+│   ├── 60-rtl-sdr.rules       # RTL-SDR udev rules
+│   └── .env                   # Your config (git-ignored, create this)
+├── setup_remote.sh            # Pi provisioning + auto-update cronjob
+└── README.md
 ```
-
-## 🔒 Security Considerations
-- Review exposed ports and adjust firewall rules as needed
-- Use strong passwords and enable authentication where available
-- Consider using reverse proxy for HTTPS termination
-- Regularly update container images for security patches
-- Watchtower requires Docker socket access - ensure proper security
 
 ## 🛠️ Troubleshooting
 
-### Common Issues
-- **Permission Issues**: Ensure Docker daemon is running and user has proper permissions
-- **Port Conflicts**: Check that required ports are not in use by other services
-- **RTL-SDR Not Detected**: Verify udev rules are installed and USB device permissions
-- **Environment Variables**: Ensure `.env` file is properly configured with required values
-- **Watchtower Updates**: Check logs if containers aren't updating automatically
-
-### Logs
-View service logs:
 ```bash
-# View logs for a service in the stack
-docker service logs shipyard_ultrafeeder
-docker service logs shipyard_watchtower
+cd flight-tracking
+docker compose ps
+docker compose logs -f ultrafeeder
+docker compose logs -f fr24
+docker compose logs -f piaware
 ```
 
-## 📚 Additional Resources
-- [Watchtower Documentation](https://containrrr.dev/watchtower/)
-- [docker-adsb-ultrafeeder Documentation](https://github.com/sdr-enthusiasts/docker-adsb-ultrafeeder)
-- [FlightRadar24 Feeder Setup](https://www.flightradar24.com/share-your-data)
-- [FlightAware PiAware Documentation](https://flightaware.com/adsb/piaware/)
+- **RTL-SDR not detected** — check `lsusb`, confirm the udev rules are installed,
+  and make sure no host process (e.g. `dump1090`) is holding the dongle.
+- **No aircraft on the map** — verify the antenna connection and that
+  `FEEDER_LAT`/`FEEDER_LONG` are set; an unset location breaks MLAT.
+- **Empty environment variables** — Compose reads `.env` from the directory you
+  run it in, so run `docker compose` from inside `flight-tracking/`.
+- **Auto-update log** — `~/update_shipyard.log` on the Pi.
+
+## 🔒 Notes
+
+- Ports are exposed on the LAN only; there is no reverse proxy or TLS in this repo.
+- Portainer and Watchtower both mount the Docker socket — anyone reaching those
+  has full control of the host's containers. Keep them off the public internet.
+
+## 📚 Resources
+
+- [docker-adsb-ultrafeeder](https://github.com/sdr-enthusiasts/docker-adsb-ultrafeeder)
+- [Watchtower](https://containrrr.dev/watchtower/)
