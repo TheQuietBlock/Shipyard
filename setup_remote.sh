@@ -1,67 +1,58 @@
 #!/bin/bash
-set -e
+# Provisions this Raspberry Pi as the Shipyard ADS-B host.
+# Single-node docker compose deployment - no Swarm.
+set -euo pipefail
 
-echo "Ensuring ~/git directory exists..."
-mkdir -p ~/git
+REPO_URL="git@github.com:TheQuietBlock/Shipyard.git"
+REPO_DIR="$HOME/git/Shipyard"
+STACK_DIR="$REPO_DIR/flight-tracking"
 
-# Move .env if it exists in old Shipyard
-if [ -f ~/Shipyard/.env ]; then
-    echo "Backing up old .env..."
-    cp ~/Shipyard/.env ~/.env.backup
-fi
-
-echo "Cleaning up old Shipyard deployment..."
-if [ -d ~/Shipyard ]; then
-    cd ~/Shipyard
-    if [ -f start_all.sh ]; then
-        # Take down the old stack if it's there
-        docker stack rm shipyard || true
-    fi
-    # Also stop containers just in case
-    docker ps -a | grep -E 'ultrafeeder|piaware|fr24|watchtower' | awk '{print $1}' | xargs -r docker stop || true
-    docker ps -a | grep -E 'ultrafeeder|piaware|fr24|watchtower' | awk '{print $1}' | xargs -r docker rm || true
-    
-    cd ~
-    echo "Removing old ~/Shipyard directory..."
-    rm -rf ~/Shipyard
-fi
-
-echo "Setting up new repository in ~/git/Shipyard..."
-cd ~/git
-if [ ! -d Shipyard ]; then
-    git clone git@github.com:TheQuietBlock/Shipyard.git
+echo "==> Cloning/updating repository in $REPO_DIR"
+mkdir -p "$HOME/git"
+if [ -d "$REPO_DIR/.git" ]; then
+    git -C "$REPO_DIR" pull --ff-only
 else
-    cd Shipyard
-    git pull
+    git clone "$REPO_URL" "$REPO_DIR"
 fi
 
-echo "Restoring .env to flight-tracking..."
-if [ -f ~/.env.backup ]; then
-    cp ~/.env.backup ~/git/Shipyard/flight-tracking/.env
-    echo ".env restored."
+echo "==> Removing the retired web-hosting stack, if still running"
+# The nginx/cloudflared stack was removed from this repo. Tear down anything
+# left over from it so it does not keep running unmanaged.
+if [ -f "$HOME/git/Shipyard/web-hosting/docker-compose.yml" ]; then
+    docker compose -f "$HOME/git/Shipyard/web-hosting/docker-compose.yml" down || true
+fi
+if docker ps -q --filter 'name=^cloudflared$' | grep -q .; then
+    docker rm -f cloudflared || true
 fi
 
-echo "Creating daily update script..."
-cat << 'EOF' > ~/update_shipyard.sh
+echo "==> Installing daily update script at $HOME/update_shipyard.sh"
+cat << EOF > "$HOME/update_shipyard.sh"
 #!/bin/bash
-set -e
-cd /home/patrick/git/Shipyard
-git pull
-cd flight-tracking
+set -euo pipefail
+cd "$STACK_DIR"
+git -C "$REPO_DIR" pull --ff-only
 docker compose pull
 docker compose up -d --remove-orphans
 docker system prune -f
 EOF
+chmod +x "$HOME/update_shipyard.sh"
 
-chmod +x ~/update_shipyard.sh
-
-echo "Setting up cronjob for daily update..."
-# Remove any existing update_shipyard cronjob
+echo "==> Registering daily cronjob (03:00)"
 (crontab -l 2>/dev/null | grep -v 'update_shipyard.sh' || true) | crontab -
-# Add the new cronjob (run daily at 3 AM)
-(crontab -l 2>/dev/null; echo "0 3 * * * /home/patrick/update_shipyard.sh >> /home/patrick/update_shipyard.log 2>&1") | crontab -
+(crontab -l 2>/dev/null; echo "0 3 * * * $HOME/update_shipyard.sh >> $HOME/update_shipyard.log 2>&1") | crontab -
 
-echo "Running initial update/deployment..."
-~/update_shipyard.sh
+echo "==> Checking configuration"
+if [ ! -f "$STACK_DIR/.env" ]; then
+    echo "WARNING: $STACK_DIR/.env is missing."
+    echo "         Create it (see README.md) before the stack will start correctly."
+fi
 
-echo "Done!"
+echo "==> Installing RTL-SDR udev rules"
+sudo cp "$STACK_DIR/60-rtl-sdr.rules" /etc/udev/rules.d/
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+
+echo "==> Running initial deployment"
+"$HOME/update_shipyard.sh"
+
+echo "Done. Map should be available at http://$(hostname -I | awk '{print $1}'):8080"
