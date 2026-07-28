@@ -17,6 +17,8 @@ All services live in a single stack: [flight-tracking/docker-compose.yml](flight
 | `ultrafeeder` | `sdr-enthusiasts/docker-adsb-ultrafeeder` | ADS-B decoder, aggregator feeder, TAR1090 map, graphs1090 |
 | `fr24` | `sdr-enthusiasts/docker-flightradar24` | FlightRadar24 feeder |
 | `piaware` | `sdr-enthusiasts/docker-piaware` | FlightAware feeder |
+| `airnavradar` | `sdr-enthusiasts/docker-airnavradar` | AirNav Radar (ex-RadarBox) feeder |
+| `planefinder` | `sdr-enthusiasts/docker-planefinder` | Plane Finder feeder |
 | `portainer` | `portainer/portainer-ee` | Container management UI |
 | `watchtower` | `nickfedor/watchtower` | Automatic image updates + cleanup |
 
@@ -26,11 +28,41 @@ All services live in a single stack: [flight-tracking/docker-compose.yml](flight
 | --- | --- |
 | `8080` | Ultrafeeder web interface (TAR1090 map, graphs1090) |
 | `8754` | FlightRadar24 feeder status |
-| `9000` / `9443` | Portainer UI (HTTP / HTTPS) |
-| `8000` | Portainer Edge agent tunnel |
+| `30053` | Plane Finder web UI |
+| `9443` | Portainer UI (HTTPS) |
 
-`fr24` and `piaware` both pull their data from `ultrafeeder` over Beast on the
-Compose network, so only `ultrafeeder` needs the SDR.
+Only `ultrafeeder` touches the SDR. Every other feeder pulls from it over Beast
+on the Compose network, so one dongle serves all of them.
+
+### Who gets fed how
+
+Ultrafeeder feeds these **natively**, from one `ULTRAFEEDER_CONFIG` block — no
+container each: adsb.fi, adsb.lol, airplanes.live, Planespotters, TheAirTraffic,
+AVDelphi, FlyItalyADSB, ADSB Exchange.
+
+The rest run their own container because they ship a closed feeder binary:
+FlightRadar24, FlightAware, AirNav Radar, Plane Finder.
+
+Adding another native aggregator is one line in `ULTRAFEEDER_CONFIG`. Note that
+ADS-B feeding is nearly free, but each `mlat,` line is a separate sync process —
+CPU climbs with the MLAT count, not the ADS-B count.
+
+### Why FlightRadar24 has MLAT disabled
+
+`fr24` is set to `MLAT=no`, which is what FR24 asks for when you feed other
+networks. Two reasons it is the right call here:
+
+1. **Timing.** FR24's MLAT wants a direct, unmodified feed from the SDR for
+   accurate timestamps. In this stack `fr24` reads a relayed Beast stream from
+   `ultrafeeder`, so its MLAT solution would be degraded anyway.
+2. **Feedback loop.** `READSB_FORWARD_MLAT_SBS=true` and the mlathub mean
+   MLAT-derived positions from other networks are merged into ultrafeeder's
+   output. If FR24 ran MLAT over that stream it would treat synthetic positions
+   as real receptions and poison its own solver.
+
+`no` is already the container's default; it is set explicitly so the intent is
+obvious. There is no `MLAT-without-gps` variable in this container — that line
+in FR24's docs refers to their own `fr24feed.ini` on a bare-metal install.
 
 ## 🔌 Hardware
 
@@ -46,31 +78,40 @@ sudo udevadm control --reload-rules && sudo udevadm trigger
 
 ## ⚙️ Configuration
 
-Create `flight-tracking/.env` (git-ignored):
+[flight-tracking/temp.env](flight-tracking/temp.env) is the template, committed
+with every key blank. On the Pi:
 
 ```bash
-# Location / identity
-FEEDER_TZ=Europe/Amsterdam
-FEEDER_LAT=52.3676
-FEEDER_LONG=4.9041
-FEEDER_ALT_M=10
-FEEDER_NAME="My ADS-B Station"
-
-# Feeder keys (obtain from the respective services)
-FR24_SHARING_KEY=your_fr24_sharing_key_here
-FLIGHTAWARE_FEEDER_ID=your_flightaware_feeder_id_here
-
-# Portainer Business Edition license
-PORTAINER_LICENSE_KEY=your_portainer_license_key_here
-
-# Optional: HeyWhatsThat range rings
-FEEDER_HEYWHATSTHAT_ID=your_heywhatsthat_id
-FEEDER_HEYWHATSTHAT_ALTS=12192,24384,36576
+cd ~/git/Shipyard/flight-tracking && cp temp.env .env
 ```
 
-Get the keys here:
-- FlightRadar24 — https://www.flightradar24.com/share-your-data
-- FlightAware — https://flightaware.com/adsb/piaware/
+Then fill it in. `.env` is git-ignored; `temp.env` is not, so never put real
+keys in the template.
+
+Two of the values are generated rather than looked up:
+
+```bash
+# MULTIFEEDER_UUID and ADSBX_UUID - run once each, paste into .env
+cat /proc/sys/kernel/random/uuid
+```
+
+Where the keys come from:
+
+| Key | Source |
+| --- | --- |
+| `FR24_SHARING_KEY` | https://www.flightradar24.com/share-your-data |
+| `FLIGHTAWARE_FEEDER_ID` | https://flightaware.com/adsb/piaware/ |
+| `PLANEFINDER_SHARECODE` | https://planefinder.net/sharing/create-sharecode |
+| `AIRNAV_SHARING_KEY` | generated on first run — see below |
+
+AirNav Radar has no signup page for the key. Leave it blank, start the stack,
+and read the key the container generates on its first run:
+
+```bash
+docker compose logs airnavradar | grep -i key
+```
+
+Paste it into `.env` and `docker compose up -d airnavradar` again.
 
 ## 🚀 Running
 
@@ -111,7 +152,8 @@ into place before or after the first run.
 ├── flight-tracking/
 │   ├── docker-compose.yml     # The whole stack
 │   ├── 60-rtl-sdr.rules       # RTL-SDR udev rules
-│   └── .env                   # Your config (git-ignored, create this)
+│   ├── temp.env               # Config template (committed, keys blank)
+│   └── .env                   # Your config (git-ignored, cp from temp.env)
 ├── setup_remote.sh            # Pi provisioning + auto-update cronjob
 └── README.md
 ```
@@ -134,11 +176,51 @@ docker compose logs -f piaware
   run it in, so run `docker compose` from inside `flight-tracking/`.
 - **Auto-update log** — `~/update_shipyard.log` on the Pi.
 
-## 🔒 Notes
+## 💾 microSD wear
 
-- Ports are exposed on the LAN only; there is no reverse proxy or TLS in this repo.
-- Portainer and Watchtower both mount the Docker socket — anyone reaching those
-  has full control of the host's containers. Keep them off the public internet.
+This host boots from a microSD card, so the stack is tuned to write as little
+as possible:
+
+- **Capped container logs.** Every service uses a shared `x-logging` anchor —
+  `json-file`, 5 MB × 2 files. Docker's default is *unbounded*, and a chatty
+  container filling `/var/lib/docker` is the fastest way to kill a card.
+- **`LOGLEVEL=error`** on ultrafeeder, `DEBUG_LEVEL=0` on airnavradar,
+  `VERBOSE_LOGGING=false` on fr24.
+- **`tmpfs` for `/var/log`** on every feeder, so in-container logs never touch
+  the card at all.
+- **`MAX_GLOBE_HISTORY=7`** trims aircraft trace retention. `globe_history` is
+  the busiest writer in the stack.
+
+Two writers are deliberately left alone, because disabling them costs you real
+features:
+
+- `graphs1090` writes RRD data to `/opt/adsb/ultrafeeder/graphs1090` roughly
+  every minute. You can move it to a tmpfs, but you lose all history on reboot.
+- `globe_history` still writes traces. `READSB_ENABLE_TRACES=false` and
+  `READSB_ENABLE_HEATMAP=false` would stop it, at the cost of the heatmap and
+  replay features on the map.
+
+If you want to be properly safe about it, put `/opt/adsb` on an external SSD or
+USB stick — that is a bigger win than any of the tuning above.
+
+## 🔒 Security
+
+Upstream ships no hardening keys, so what is here is this repo's own:
+
+- `no-new-privileges:true` on all five feeder containers.
+- Portainer exposes only `9443` (HTTPS). Its plain-HTTP `9000` and the unused
+  Edge agent port `8000` are not published — `9000` was an unencrypted admin
+  interface on the LAN.
+- Portainer and Watchtower mount `/var/run/docker.sock`, which is equivalent to
+  root on this host. That is inherent to what they do; keep both off the public
+  internet.
+- `/proc/diskstats` is mounted read-only.
+- No reverse proxy or TLS termination in this repo — everything is LAN-only.
+
+Worth knowing: all images are pulled by floating tag (`:latest` or untagged)
+and Watchtower auto-updates them nightly, so an upstream compromise reaches
+this host without review. That is the normal trade for unattended patching, but
+it is a trade.
 
 ## 📚 Resources
 

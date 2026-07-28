@@ -43,8 +43,10 @@ echo "==> Registering daily cronjob (03:00)"
 
 echo "==> Checking configuration"
 if [ ! -f "$STACK_DIR/.env" ]; then
-    echo "WARNING: $STACK_DIR/.env is missing."
-    echo "         Create it (see README.md) before the stack will start correctly."
+    cp "$STACK_DIR/temp.env" "$STACK_DIR/.env"
+    echo "WARNING: no .env found - seeded one from temp.env."
+    echo "         Edit $STACK_DIR/.env and fill in the keys, then re-run"
+    echo "         ~/update_shipyard.sh. Feeders will not connect until you do."
 fi
 
 echo "==> Installing RTL-SDR udev rules"
